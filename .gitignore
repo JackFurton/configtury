@@ -1,4 +1,4 @@
-node_modules/
-out/
-out-*/
+# Nix build outputs
+result
+result-*
 *.log

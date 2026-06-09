@@ -23,16 +23,14 @@ install = []                 # anything extra on top
 program = "zsh"
 ```
 
-```console
-$ configtury build laptop.toml
-✓ compiled "laptop" -> out/
-  5 package(s), system aarch64-darwin
+Drop that file in `hosts/` and it becomes a flake output automatically:
 
-Apply it on a machine with Nix:
-  cd out && nix run home-manager/master -- switch --flake .#furjacka
+```console
+$ nix run home-manager/master -- switch --flake .#laptop
 ```
 
-That emits `out/flake.nix` + `out/home.nix` — real, applyable Nix.
+No CLI to install, no codegen step — `flake.nix` reads the TOML and feeds it
+straight into the home-manager / NixOS module systems.
 
 ## Why this can scale
 
@@ -44,24 +42,26 @@ The product is **almost entirely config files**, and that's the point:
   `schemastore` grew to thousands of entries.
 - **Profiles make specs compose** instead of repeat. `dev-base` today; `rust`,
   `data-science`, `web` tomorrow — each just a list of package names.
-- **The compiler stays small** because all the real complexity lives in Nix.
-  We generate config; Nix does the provisioning.
+- **There is no compiler to maintain** because all the real complexity lives in
+  Nix. We feed config into the module system; Nix does the provisioning.
 
-## Commands
+## Usage
 
-```
-configtury build <spec.toml> [--out dir]   compile a spec to Nix
-configtury check <spec.toml>               validate a spec against the registry
-configtury list                            show available packages & profiles
-```
-
-## Install (dev)
+Add a `<name>.toml` to `hosts/`, then build the matching flake output:
 
 ```console
-npm install
-node bin/configtury.js list
-npm test
+# inspect what a host resolves to
+nix eval .#nixosConfigurations.homelab.config.networking.hostName
+
+# build a whole machine's system closure
+nix build .#nixosConfigurations.homelab.config.system.build.toplevel
+
+# apply
+sudo nixos-rebuild switch --flake .#homelab          # NixOS
+nix run home-manager/master -- switch --flake .#laptop   # home-manager
 ```
+
+Validate everything evaluates with `nix flake check`.
 
 ## Two targets
 
@@ -150,9 +150,5 @@ nix run home-manager/master -- switch --flake .#laptop
   module system, not by us.
 - **Composable services.** Each enabled service is a one-line module; Nix merges
   them. Adding one is still a 4-line TOML PR to `registry/services/`.
-
-> The `bin/` + `src/` JavaScript implementation is the original prototype, kept
-> as an executable reference (`npm test`) while the Nix core is validated on a
-> machine with Nix.
 
 MIT.
