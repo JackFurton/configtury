@@ -1,0 +1,15 @@
+# A configtury host spec: describe the machine you want, in plain TOML.
+# Run:  configtury build examples/laptop.toml
+[host]
+name = "laptop"
+username = "furjacka"
+system = "aarch64-darwin"   # or x86_64-linux, aarch64-linux, x86_64-darwin
+
+[packages]
+# Profiles are reusable bundles from the registry. Compose freely.
+profiles = ["dev-base"]
+# Anything extra on top of the profiles.
+install = []
+
+[shell]
+program = "zsh"

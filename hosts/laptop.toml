@@ -1,0 +1,14 @@
+# home-manager target: your user environment.
+# Build:  nix build .#homeConfigurations.laptop.activationPackage
+[host]
+name = "laptop"
+username = "furjacka"
+system = "aarch64-darwin"
+target = "home"
+
+[packages]
+profiles = ["dev-base"]
+install = []
+
+[shell]
+program = "zsh"

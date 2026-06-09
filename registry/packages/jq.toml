@@ -1,0 +1,4 @@
+[package]
+name = "jq"
+nixpkg = "jq"
+description = "command-line JSON processor"

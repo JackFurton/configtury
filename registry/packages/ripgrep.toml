@@ -1,0 +1,4 @@
+[package]
+name = "ripgrep"
+nixpkg = "ripgrep"
+description = "fast recursive search (rg)"

@@ -1,0 +1,16 @@
+{
+  "name": "configtury",
+  "version": "0.0.1",
+  "description": "Describe a machine in friendly TOML. configtury compiles it to Nix. Nix provisions it, reproducibly.",
+  "type": "module",
+  "bin": {
+    "configtury": "./bin/configtury.js"
+  },
+  "scripts": {
+    "test": "node --test"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "smol-toml": "^1.3.0"
+  }
+}

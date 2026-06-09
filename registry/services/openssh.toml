@@ -1,0 +1,4 @@
+[service]
+name = "openssh"
+enable = "services.openssh.enable"
+description = "OpenSSH remote login daemon"

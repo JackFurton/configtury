@@ -1,0 +1,4 @@
+[package]
+name = "git"
+nixpkg = "git"
+description = "distributed version control"

@@ -1,0 +1,4 @@
+[profile]
+name = "dev-base"
+description = "sensible CLI baseline for any dev machine"
+packages = ["git", "ripgrep", "fd", "bat", "jq"]

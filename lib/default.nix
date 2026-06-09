@@ -1,0 +1,160 @@
+# configtury core, written in Nix itself.
+#
+# The whole "compiler" is gone: we read the friendly TOML with builtins.fromTOML
+# and feed it straight into the NixOS / home-manager module systems. No string
+# templating, no manual escaping — the module system does the merging, typing,
+# and validation for us. Each enabled service is just a tiny module; Nix merges
+# them. That's the payoff of going native.
+{ nixpkgs, home-manager }:
+let
+  lib = nixpkgs.lib;
+
+  # ---- registry: TOML stays the contribution surface (4-line PRs) ----
+  readTomlDir = dir:
+    if !(builtins.pathExists dir)
+    then [ ]
+    else
+      let
+        entries = builtins.readDir dir;
+        tomls = lib.filterAttrs (n: t: t == "regular" && lib.hasSuffix ".toml" n) entries;
+      in
+      lib.mapAttrsToList
+        (name: _: builtins.fromTOML (builtins.readFile (dir + "/${name}")))
+        tomls;
+
+  mkRegistry = root: {
+    packages = lib.listToAttrs
+      (map (d: lib.nameValuePair d.package.name d.package) (readTomlDir (root + "/registry/packages")));
+    profiles = lib.listToAttrs
+      (map (d: lib.nameValuePair d.profile.name d.profile) (readTomlDir (root + "/registry/profiles")));
+    services = lib.listToAttrs
+      (map (d: lib.nameValuePair d.service.name d.service) (readTomlDir (root + "/registry/services")));
+  };
+
+  # ---- resolution + validation (errors instead of bogus output) ----
+  resolvePkgNames = registry: spec:
+    let
+      profileNames = spec.packages.profiles or [ ];
+      fromProfiles = lib.concatMap
+        (pn:
+          let p = registry.profiles.${pn} or (throw "configtury: unknown profile '${pn}'");
+          in p.packages or [ ])
+        profileNames;
+      explicit = spec.packages.install or [ ];
+      all = lib.unique (fromProfiles ++ explicit);
+      unknown = lib.filter (n: !(registry.packages ? ${n})) all;
+    in
+    if unknown != [ ]
+    then throw "configtury: unknown package(s): ${lib.concatStringsSep ", " unknown}"
+    else all;
+
+  pkgAttr = registry: name: registry.packages.${name}.nixpkg;
+
+  # Each service becomes a one-line module setting its NixOS option path to true.
+  # lib.setAttrByPath turns "services.openssh.enable" into { services.openssh.enable = true; }
+  # and the module system merges them all — no hand-written recursiveUpdate.
+  serviceModules = registry: spec:
+    map
+      (sn:
+        let s = registry.services.${sn} or (throw "configtury: unknown service '${sn}'");
+        in lib.setAttrByPath (lib.splitString "." s.enable) true)
+      (spec.services.enable or [ ]);
+
+  usersModule = spec: {
+    users.users = lib.mapAttrs
+      (_: cfg: {
+        isNormalUser = true;
+        extraGroups = cfg.groups or [ ];
+      })
+      (spec.users or { });
+  };
+
+  bootModule = spec:
+    let
+      boot = spec.boot or { };
+      loader = boot.loader or "systemd-boot";
+    in
+    if loader == "grub"
+    then {
+      boot.loader.grub.enable = true;
+      boot.loader.grub.device = boot.device or (throw "configtury: grub loader needs [boot].device");
+    }
+    else {
+      boot.loader.systemd-boot.enable = true;
+      boot.loader.efi.canTouchEfiVariables = true;
+    };
+
+  homeDirFor = system: user:
+    if lib.hasSuffix "darwin" system then "/Users/${user}" else "/home/${user}";
+
+  # ---- the two targets ----
+  mkNixos = registry: name: spec:
+    if !(lib.hasSuffix "linux" (spec.host.system or "x86_64-linux"))
+    then throw "configtury: nixos target '${name}' requires a linux system"
+    else nixpkgs.lib.nixosSystem {
+      system = spec.host.system or "x86_64-linux";
+      modules = [
+        {
+          networking.hostName = name;
+          system.stateVersion = spec.host.stateVersion or "24.05";
+        }
+        (bootModule spec)
+        (usersModule spec)
+        ({ pkgs, ... }: {
+          environment.systemPackages =
+            map (n: pkgs.${pkgAttr registry n}) (resolvePkgNames registry spec);
+        })
+      ] ++ serviceModules registry spec;
+    };
+
+  mkHome = registry: name: spec:
+    let
+      system = spec.host.system or "x86_64-linux";
+      pkgs = nixpkgs.legacyPackages.${system};
+      user = spec.host.username or (throw "configtury: home target '${name}' needs [host].username");
+    in
+    home-manager.lib.homeManagerConfiguration {
+      inherit pkgs;
+      modules = [
+        {
+          home.username = user;
+          home.homeDirectory = spec.host.homeDirectory or (homeDirFor system user);
+          home.stateVersion = spec.host.stateVersion or "24.05";
+          home.packages = map (n: pkgs.${pkgAttr registry n}) (resolvePkgNames registry spec);
+        }
+        (lib.optionalAttrs (spec ? shell) {
+          programs.${spec.shell.program}.enable = true;
+        })
+      ];
+    };
+
+  # ---- scan hosts/*.toml -> flake outputs, partitioned by target ----
+  loadSpecs = root:
+    let
+      dir = root + "/hosts";
+      entries = if builtins.pathExists dir then builtins.readDir dir else { };
+      tomls = lib.filterAttrs (n: t: t == "regular" && lib.hasSuffix ".toml" n) entries;
+    in
+    lib.mapAttrsToList
+      (fname: _: builtins.fromTOML (builtins.readFile (dir + "/${fname}")))
+      tomls;
+
+  isNixos = spec: (spec.host.target or "home") == "nixos";
+in
+{
+  inherit mkRegistry mkNixos mkHome resolvePkgNames;
+
+  mkOutputs = { root }:
+    let
+      registry = mkRegistry root;
+      specs = loadSpecs root;
+      nixosSpecs = lib.filter isNixos specs;
+      homeSpecs = lib.filter (s: !(isNixos s)) specs;
+    in
+    {
+      nixosConfigurations = lib.listToAttrs
+        (map (s: lib.nameValuePair s.host.name (mkNixos registry s.host.name s)) nixosSpecs);
+      homeConfigurations = lib.listToAttrs
+        (map (s: lib.nameValuePair s.host.name (mkHome registry s.host.name s)) homeSpecs);
+    };
+}

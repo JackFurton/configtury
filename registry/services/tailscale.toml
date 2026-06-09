@@ -1,0 +1,4 @@
+[service]
+name = "tailscale"
+enable = "services.tailscale.enable"
+description = "Tailscale mesh VPN"

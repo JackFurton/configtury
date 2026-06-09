@@ -1,0 +1,4 @@
+[package]
+name = "fd"
+nixpkg = "fd"
+description = "fast, friendly find alternative"

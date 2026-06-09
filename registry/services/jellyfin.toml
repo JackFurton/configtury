@@ -1,0 +1,4 @@
+[service]
+name = "jellyfin"
+enable = "services.jellyfin.enable"
+description = "Jellyfin media server"

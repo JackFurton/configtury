@@ -1,0 +1,18 @@
+# NixOS target: the whole machine.
+# Build:  nix build .#nixosConfigurations.homelab.config.system.build.toplevel
+[host]
+name = "homelab"
+system = "x86_64-linux"
+target = "nixos"
+
+[boot]
+loader = "systemd-boot"
+
+[packages]
+profiles = ["dev-base"]
+
+[services]
+enable = ["openssh", "tailscale", "docker", "jellyfin"]
+
+[users.jack]
+groups = ["wheel", "docker"]

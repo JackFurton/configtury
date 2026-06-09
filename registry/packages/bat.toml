@@ -1,0 +1,4 @@
+[package]
+name = "bat"
+nixpkg = "bat"
+description = "cat clone with syntax highlighting"
