@@ -138,10 +138,48 @@ let
   homeDirFor = system: user:
     if lib.hasSuffix "darwin" system then "/Users/${user}" else "/home/${user}";
 
+  # ---- PaaS: deploy an app (a container) with a domain + reverse proxy ----
+  # An app is declared in apps/<name>.toml and targets a host. We wire it as an
+  # OCI container bound to loopback, fronted by nginx (optionally with ACME
+  # TLS). The platform's job is exactly this: turn "run my app" into the right
+  # systemd/container/proxy config on the right machine.
+  mkAppModule = a:
+    let
+      containerPort = a.container_port or a.port;
+      wantTls = a.tls or false;
+    in
+    # Return one module that imports the (container, proxy, tls) sub-modules.
+    # Each list item is itself a module; the module system merges them.
+    {
+      imports = [
+        {
+          virtualisation.oci-containers.backend = lib.mkDefault "podman";
+          virtualisation.oci-containers.containers.${a.name} = {
+            image = a.image;
+            ports = [ "127.0.0.1:${toString a.port}:${toString containerPort}" ];
+            environment = a.env or { };
+          };
+        }
+        (lib.optionalAttrs (a ? domain) {
+          services.nginx.enable = true;
+          services.nginx.recommendedProxySettings = true;
+          services.nginx.virtualHosts.${a.domain} = {
+            forceSSL = wantTls;
+            enableACME = wantTls;
+            locations."/".proxyPass = "http://127.0.0.1:${toString a.port}";
+          };
+        })
+        (lib.optionalAttrs (wantTls && (a ? email)) {
+          security.acme.acceptTerms = true;
+          security.acme.defaults.email = a.email;
+        })
+      ];
+    };
+
   # Everything that describes the machine itself: identity, who can log in,
-  # what's installed, what runs. Shared by the real-machine build AND the
-  # image build — boot loader and disk layout are layered on separately.
-  coreNixosModules = registry: name: spec: [
+  # what's installed, what runs (services + apps). Shared by the real-machine
+  # build AND the image build — boot loader and disk layout layer on separately.
+  coreNixosModules = registry: name: spec: hostApps: [
     {
       networking.hostName = name;
       system.stateVersion = spec.host.stateVersion or "24.05";
@@ -151,15 +189,17 @@ let
       environment.systemPackages =
         map (n: pkgs.${pkgAttr registry n}) (resolvePkgNames registry spec);
     })
-  ] ++ serviceModules registry spec;
+  ]
+  ++ serviceModules registry spec
+  ++ map mkAppModule hostApps;
 
   # ---- the targets ----
-  mkNixos = registry: name: spec:
+  mkNixos = registry: name: spec: hostApps:
     if !(lib.hasSuffix "linux" (spec.host.system or "x86_64-linux"))
     then throw "configtury: nixos target '${name}' requires a linux system"
     else nixpkgs.lib.nixosSystem {
       system = spec.host.system or "x86_64-linux";
-      modules = coreNixosModules registry name spec
+      modules = coreNixosModules registry name spec hostApps
         ++ [ (bootModule spec) ]
         ++ lib.optionals (spec ? disk) [ disko.nixosModules.disko (diskoModule spec) ];
     };
@@ -167,11 +207,11 @@ let
   # ---- rung 3: a flashable image (qcow / iso / sd-aarch64 / raw / ...) ----
   # The chosen format owns disk layout AND bootloader, so we feed it the core
   # machine modules WITHOUT our boot/disko modules (which would conflict).
-  mkImage = registry: name: spec:
+  mkImage = registry: name: spec: hostApps:
     nixos-generators.nixosGenerate {
       system = spec.host.system or "x86_64-linux";
       format = spec.image.format or "qcow";
-      modules = coreNixosModules registry name spec;
+      modules = coreNixosModules registry name spec hostApps;
     };
 
   # ---- rung 4: install a declared OS onto a remote machine over SSH ----
@@ -235,6 +275,17 @@ let
       (fname: _: builtins.fromTOML (builtins.readFile (dir + "/${fname}")))
       tomls;
 
+  # ---- scan apps/*.toml -> a flat list of app specs (each targets a host) ----
+  loadApps = root:
+    let
+      dir = root + "/apps";
+      entries = if builtins.pathExists dir then builtins.readDir dir else { };
+      tomls = lib.filterAttrs (n: t: t == "regular" && lib.hasSuffix ".toml" n) entries;
+    in
+    lib.mapAttrsToList
+      (fname: _: (builtins.fromTOML (builtins.readFile (dir + "/${fname}"))).app)
+      tomls;
+
   isNixos = spec: (spec.host.target or "home") == "nixos";
 in
 {
@@ -244,6 +295,8 @@ in
     let
       registry = mkRegistry root;
       specs = loadSpecs root;
+      apps = loadApps root;
+      appsForHost = name: lib.filter (a: (a.host or "") == name) apps;
       nixosSpecs = lib.filter isNixos specs;
       homeSpecs = lib.filter (s: !(isNixos s)) specs;
 
@@ -258,12 +311,12 @@ in
     in
     {
       nixosConfigurations = lib.listToAttrs
-        (map (s: lib.nameValuePair s.host.name (mkNixos registry s.host.name s)) nixosSpecs);
+        (map (s: lib.nameValuePair s.host.name (mkNixos registry s.host.name s (appsForHost s.host.name))) nixosSpecs);
       homeConfigurations = lib.listToAttrs
         (map (s: lib.nameValuePair s.host.name (mkHome registry s.host.name s)) homeSpecs);
       packages = lib.listToAttrs (map
         (sys: lib.nameValuePair sys (lib.listToAttrs (map
-          (s: lib.nameValuePair s.host.name (mkImage registry s.host.name s))
+          (s: lib.nameValuePair s.host.name (mkImage registry s.host.name s (appsForHost s.host.name)))
           (lib.filter (s: (s.host.system or "x86_64-linux") == sys) imageSpecs))))
         imageSystems);
       apps = lib.listToAttrs (map

@@ -156,7 +156,32 @@ The partitioning is real and generated from your `[disk]` spec — it's
 `nixosConfigurations.<name>.config.system.build.diskoScript` (`sgdisk` + `mkfs`
 on your device), the exact automation nixos-anywhere runs on the target.
 
-## Roadmap — climbing toward the metal
+## Apps (self-hosted PaaS)
+
+The layer on top of machines: describe an **app**, and configtury runs it on a
+host as a container behind an nginx reverse proxy (with optional ACME TLS). Drop
+a file in `apps/`:
+
+```toml
+# apps/blog.toml
+[app]
+name = "blog"
+host = "homelab"                 # which machine runs it
+image = "ghcr.io/me/blog:latest"
+port = 8080                      # loopback port nginx proxies to
+container_port = 8080            # what the container listens on (defaults to port)
+domain = "blog.example.com"
+tls = true                       # forceSSL + auto Let's Encrypt cert
+email = "me@example.com"         # ACME contact
+
+[app.env]
+DATABASE_URL = "postgres://..."
+```
+
+The app is wired into that host's config — so it ships in the host's **image**
+and **remote install** automatically. One spec, deployed everywhere the host is.
+
+## Roadmap — climbing toward the metal (and up the stack)
 
 - [x] v0: packages + profiles + shell → home-manager flake
 - [x] **NixOS system target**: services + users + boot → `configuration.nix`
@@ -164,8 +189,11 @@ on your device), the exact automation nixos-anywhere runs on the target.
 - [x] **flashable images**: `[image]` → qcow / iso / sd-aarch64 / raw via nixos-generators
 - [x] **remote install**: `[disk]` → `deploy-<name>` app (nixos-anywhere over SSH)
 - [x] **service options**: `[services.<name>]` keys map onto `services.<name>.*`
+- [x] **apps (PaaS)**: `apps/<name>.toml` → container + nginx reverse proxy (+TLS)
+- [ ] App build-from-source (git repo → image), not just prebuilt images
+- [ ] Multi-app routing, health checks, zero-downtime restarts
 - [ ] Migrate image builds to the upstreamed `system.build.images` (nixpkgs ≥ 25.05)
-- [ ] Hosted registry browser (static site generated *from* the registry)
+- [ ] Hosted control plane: dashboard, deploy + rollback, fleet view
 
 ## How it's built (Nix-native core)
 
@@ -178,6 +206,7 @@ flake.nix           entry point; scans hosts/ -> nixos/home Configurations
 lib/default.nix     reads registry + specs, builds modules per target
 registry/           the database: packages/, profiles/, services/ — all TOML
 hosts/              your machines, one TOML each
+apps/               your apps (PaaS), one TOML each → containers + proxy
 ```
 
 Drop a TOML in `hosts/`, and the matching config appears as a flake output:

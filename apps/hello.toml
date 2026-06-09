@@ -1,0 +1,13 @@
+# A PaaS app: a container fronted by an nginx reverse proxy on its host.
+# configtury wires the container + proxy (+ TLS when tls=true) into `host`.
+[app]
+name = "hello"
+host = "homelab"                  # which machine runs it
+image = "nginxdemos/hello:plain-text"
+port = 8080                       # loopback port nginx proxies to
+container_port = 80               # what the container listens on
+domain = "hello.local"
+tls = false                       # set true (+ email + a public domain) for HTTPS
+
+[app.env]
+GREETING = "hello from configtury"
