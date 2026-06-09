@@ -7,11 +7,15 @@
       url = "github:nix-community/home-manager";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    disko = {
+      url = "github:nix-community/disko";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
-  outputs = { self, nixpkgs, home-manager, ... }:
+  outputs = { self, nixpkgs, home-manager, disko, ... }:
     let
-      configtury = import ./lib { inherit nixpkgs home-manager; };
+      configtury = import ./lib { inherit nixpkgs home-manager disko; };
       outputs = configtury.mkOutputs { root = self; };
     in
     {

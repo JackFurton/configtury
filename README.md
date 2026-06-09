@@ -83,6 +83,10 @@ target = "nixos"
 [boot]
 loader = "systemd-boot"      # or "grub" with device = "/dev/sda"
 
+[disk]
+device = "/dev/vda"          # disko partitions + formats it; fileSystems auto-generated
+filesystem = "ext4"
+
 [packages]
 profiles = ["dev-base"]      # system-wide packages
 
@@ -110,7 +114,7 @@ Apply it on a NixOS machine:
 
 - [x] v0: packages + profiles + shell → home-manager flake
 - [x] **NixOS system target**: services + users + boot → `configuration.nix`
-- [ ] disko disk layout (declare partitions/filesystems → real disk formatting)
+- [x] **disko disk layout**: `[disk]` → GPT partitioning + auto-generated `fileSystems`
 - [ ] nixos-generators (build a bootable ISO / SD-card / VM image from the spec)
 - [ ] nixos-anywhere (install a declared OS onto remote bare metal over SSH)
 - [ ] Service options (ports, config), not just `enable`

@@ -1,0 +1,23 @@
+# aarch64-linux host — builds natively inside an OrbStack Linux machine on
+# Apple Silicon (no x86 emulation). Used to prove a configtury machine really
+# *builds*, not just evaluates.
+[host]
+name = "vmlab"
+system = "aarch64-linux"
+target = "nixos"
+
+[boot]
+loader = "systemd-boot"
+
+[disk]
+device = "/dev/vda"
+filesystem = "ext4"
+
+[packages]
+profiles = ["dev-base"]
+
+[services]
+enable = ["openssh"]
+
+[users.jack]
+groups = ["wheel"]

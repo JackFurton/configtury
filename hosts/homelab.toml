@@ -8,6 +8,10 @@ target = "nixos"
 [boot]
 loader = "systemd-boot"
 
+[disk]
+device = "/dev/vda"       # disko partitions + formats this; fileSystems auto-generated
+filesystem = "ext4"
+
 [packages]
 profiles = ["dev-base"]
 

@@ -5,7 +5,7 @@
 # templating, no manual escaping — the module system does the merging, typing,
 # and validation for us. Each enabled service is just a tiny module; Nix merges
 # them. That's the payoff of going native.
-{ nixpkgs, home-manager }:
+{ nixpkgs, home-manager, disko }:
 let
   lib = nixpkgs.lib;
 
@@ -84,6 +84,37 @@ let
       boot.loader.efi.canTouchEfiVariables = true;
     };
 
+  # ---- rung 2: declarative disk layout (disko) ----
+  # A [disk] section turns an OS-minus-its-disk into a complete, bootable
+  # machine: disko formats the device AND auto-generates fileSystems.* for us.
+  # v0 = GPT with an ESP (/boot) + a root partition filling the rest.
+  diskoModule = spec:
+    let
+      disk = spec.disk;
+      device = disk.device or (throw "configtury: [disk] needs a device, e.g. device = \"/dev/vda\"");
+      rootFs = disk.filesystem or "ext4";
+    in
+    {
+      disko.devices.disk.main = {
+        inherit device;
+        type = "disk";
+        content = {
+          type = "gpt";
+          partitions = {
+            ESP = {
+              size = "512M";
+              type = "EF00";
+              content = { type = "filesystem"; format = "vfat"; mountpoint = "/boot"; };
+            };
+            root = {
+              size = "100%";
+              content = { type = "filesystem"; format = rootFs; mountpoint = "/"; };
+            };
+          };
+        };
+      };
+    };
+
   homeDirFor = system: user:
     if lib.hasSuffix "darwin" system then "/Users/${user}" else "/home/${user}";
 
@@ -104,7 +135,9 @@ let
           environment.systemPackages =
             map (n: pkgs.${pkgAttr registry n}) (resolvePkgNames registry spec);
         })
-      ] ++ serviceModules registry spec;
+      ]
+      ++ serviceModules registry spec
+      ++ lib.optionals (spec ? disk) [ disko.nixosModules.disko (diskoModule spec) ];
     };
 
   mkHome = registry: name: spec:
