@@ -13,6 +13,11 @@ loader = "systemd-boot"
 device = "/dev/vda"
 filesystem = "ext4"
 
+[image]
+# sd-aarch64 (Pi SD card) + iso build with plain fs tools — no VM, no KVM.
+# qcow/raw install via a VM, so they need a KVM-capable builder.
+format = "sd-aarch64"
+
 [packages]
 profiles = ["dev-base"]
 

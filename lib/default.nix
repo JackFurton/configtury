@@ -5,7 +5,7 @@
 # templating, no manual escaping — the module system does the merging, typing,
 # and validation for us. Each enabled service is just a tiny module; Nix merges
 # them. That's the payoff of going native.
-{ nixpkgs, home-manager, disko }:
+{ nixpkgs, home-manager, disko, nixos-generators }:
 let
   lib = nixpkgs.lib;
 
@@ -118,26 +118,40 @@ let
   homeDirFor = system: user:
     if lib.hasSuffix "darwin" system then "/Users/${user}" else "/home/${user}";
 
-  # ---- the two targets ----
+  # Everything that describes the machine itself: identity, who can log in,
+  # what's installed, what runs. Shared by the real-machine build AND the
+  # image build — boot loader and disk layout are layered on separately.
+  coreNixosModules = registry: name: spec: [
+    {
+      networking.hostName = name;
+      system.stateVersion = spec.host.stateVersion or "24.05";
+    }
+    (usersModule spec)
+    ({ pkgs, ... }: {
+      environment.systemPackages =
+        map (n: pkgs.${pkgAttr registry n}) (resolvePkgNames registry spec);
+    })
+  ] ++ serviceModules registry spec;
+
+  # ---- the targets ----
   mkNixos = registry: name: spec:
     if !(lib.hasSuffix "linux" (spec.host.system or "x86_64-linux"))
     then throw "configtury: nixos target '${name}' requires a linux system"
     else nixpkgs.lib.nixosSystem {
       system = spec.host.system or "x86_64-linux";
-      modules = [
-        {
-          networking.hostName = name;
-          system.stateVersion = spec.host.stateVersion or "24.05";
-        }
-        (bootModule spec)
-        (usersModule spec)
-        ({ pkgs, ... }: {
-          environment.systemPackages =
-            map (n: pkgs.${pkgAttr registry n}) (resolvePkgNames registry spec);
-        })
-      ]
-      ++ serviceModules registry spec
-      ++ lib.optionals (spec ? disk) [ disko.nixosModules.disko (diskoModule spec) ];
+      modules = coreNixosModules registry name spec
+        ++ [ (bootModule spec) ]
+        ++ lib.optionals (spec ? disk) [ disko.nixosModules.disko (diskoModule spec) ];
+    };
+
+  # ---- rung 3: a flashable image (qcow / iso / sd-aarch64 / raw / ...) ----
+  # The chosen format owns disk layout AND bootloader, so we feed it the core
+  # machine modules WITHOUT our boot/disko modules (which would conflict).
+  mkImage = registry: name: spec:
+    nixos-generators.nixosGenerate {
+      system = spec.host.system or "x86_64-linux";
+      format = spec.image.format or "qcow";
+      modules = coreNixosModules registry name spec;
     };
 
   mkHome = registry: name: spec:
@@ -183,11 +197,21 @@ in
       specs = loadSpecs root;
       nixosSpecs = lib.filter isNixos specs;
       homeSpecs = lib.filter (s: !(isNixos s)) specs;
+
+      # Hosts that ask for an [image], grouped by their target system so they
+      # land under the flat-by-system `packages` output flakes expect.
+      imageSpecs = lib.filter (s: isNixos s && s ? image) specs;
+      imageSystems = lib.unique (map (s: s.host.system or "x86_64-linux") imageSpecs);
     in
     {
       nixosConfigurations = lib.listToAttrs
         (map (s: lib.nameValuePair s.host.name (mkNixos registry s.host.name s)) nixosSpecs);
       homeConfigurations = lib.listToAttrs
         (map (s: lib.nameValuePair s.host.name (mkHome registry s.host.name s)) homeSpecs);
+      packages = lib.listToAttrs (map
+        (sys: lib.nameValuePair sys (lib.listToAttrs (map
+          (s: lib.nameValuePair s.host.name (mkImage registry s.host.name s))
+          (lib.filter (s: (s.host.system or "x86_64-linux") == sys) imageSpecs))))
+        imageSystems);
     };
 }

@@ -98,26 +98,43 @@ groups = ["wheel", "docker"]
 ```
 
 ```console
-$ configtury build homelab.toml --out out-nixos
-✓ compiled NixOS system "homelab" -> out-nixos/
-  5 package(s), 4 service(s), 1 user(s)
-
-Apply it on a NixOS machine:
-  sudo nixos-rebuild switch --flake out-nixos#homelab
+$ sudo nixos-rebuild switch --flake .#homelab
 ```
 
-> A bootable install also needs hardware specifics (`fileSystems`, swap). Those
-> come from `nixos-generate-config` today, or from a configtury **disko** layout
-> once rung 2 lands. The generated config declares everything *above* the disk.
+A `[disk]` section makes it a *complete, bootable* machine: disko partitions
+and formats the device and auto-generates `fileSystems`, so there's no
+hand-written `hardware-configuration.nix` to babysit.
+
+### Flashable images
+
+Add an `[image]` section and the host also builds into a flashable artifact:
+
+```toml
+[image]
+format = "sd-aarch64"   # also: iso, qcow, raw, vm, ...
+```
+
+```console
+# e.g. an SD image to flash to a Raspberry Pi, or an ISO, or a qcow2 for a VPS
+$ nix build .#packages.aarch64-linux.vmlab
+```
+
+The chosen format owns disk layout + bootloader, so the same TOML targets a
+running NixOS host *or* an image, from one spec.
+
+> Format note: `sd-aarch64` and `iso` are assembled with plain filesystem tools,
+> so they build anywhere. `qcow`/`raw` install via a throwaway VM and therefore
+> need a **KVM-capable builder** (`requiredSystemFeatures = ["kvm"]`).
 
 ## Roadmap — climbing toward the metal
 
 - [x] v0: packages + profiles + shell → home-manager flake
 - [x] **NixOS system target**: services + users + boot → `configuration.nix`
 - [x] **disko disk layout**: `[disk]` → GPT partitioning + auto-generated `fileSystems`
-- [ ] nixos-generators (build a bootable ISO / SD-card / VM image from the spec)
+- [x] **flashable images**: `[image]` → qcow / iso / sd-aarch64 / raw via nixos-generators
 - [ ] nixos-anywhere (install a declared OS onto remote bare metal over SSH)
 - [ ] Service options (ports, config), not just `enable`
+- [ ] Migrate image builds to the upstreamed `system.build.images` (nixpkgs ≥ 25.05)
 - [ ] Hosted registry browser (static site generated *from* the registry)
 
 ## How it's built (Nix-native core)
