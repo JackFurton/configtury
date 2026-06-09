@@ -5,7 +5,7 @@
 # templating, no manual escaping — the module system does the merging, typing,
 # and validation for us. Each enabled service is just a tiny module; Nix merges
 # them. That's the payoff of going native.
-{ nixpkgs, home-manager, disko, nixos-generators }:
+{ nixpkgs, home-manager, disko, nixos-generators, nixos-anywhere }:
 let
   lib = nixpkgs.lib;
 
@@ -154,6 +154,35 @@ let
       modules = coreNixosModules registry name spec;
     };
 
+  # ---- rung 4: install a declared OS onto a remote machine over SSH ----
+  # nixos-anywhere consumes nixosConfigurations.<name> (which already carries
+  # the disko layout), kexecs into an installer on the target, wipes+partitions
+  # the disk, and installs. We wrap it as `nix run .#deploy-<name> -- root@host`.
+  # The [disk] section is what makes a host deployable, so we only emit a
+  # deploy app for hosts that have one.
+  mkDeployApp = system: name: spec:
+    let
+      pkgs = nixpkgs.legacyPackages.${system};
+      na = nixos-anywhere.packages.${system}.nixos-anywhere;
+      target = spec.deploy.target or "";
+      script = pkgs.writeShellScript "deploy-${name}" ''
+        set -euo pipefail
+        TARGET="${target}"
+        if [ "$#" -gt 0 ]; then TARGET="$1"; shift; fi
+        if [ -z "$TARGET" ]; then
+          echo "usage: nix run .#deploy-${name} -- [user@]host"
+          echo "installs nixosConfigurations.${name} onto the target (WIPES its disk)"
+          exit 1
+        fi
+        echo ">> deploying '${name}' to $TARGET — this ERASES the target disk"
+        exec ${na}/bin/nixos-anywhere --flake ".#${name}" "$@" "$TARGET"
+      '';
+    in
+    {
+      type = "app";
+      program = "${script}";
+    };
+
   mkHome = registry: name: spec:
     let
       system = spec.host.system or "x86_64-linux";
@@ -202,6 +231,10 @@ in
       # land under the flat-by-system `packages` output flakes expect.
       imageSpecs = lib.filter (s: isNixos s && s ? image) specs;
       imageSystems = lib.unique (map (s: s.host.system or "x86_64-linux") imageSpecs);
+
+      # Hosts with a [disk] are installable; each gets a deploy-<name> app.
+      deploySpecs = lib.filter (s: isNixos s && s ? disk) specs;
+      deploySystems = lib.unique (map (s: s.host.system or "x86_64-linux") deploySpecs);
     in
     {
       nixosConfigurations = lib.listToAttrs
@@ -213,5 +246,10 @@ in
           (s: lib.nameValuePair s.host.name (mkImage registry s.host.name s))
           (lib.filter (s: (s.host.system or "x86_64-linux") == sys) imageSpecs))))
         imageSystems);
+      apps = lib.listToAttrs (map
+        (sys: lib.nameValuePair sys (lib.listToAttrs (map
+          (s: lib.nameValuePair "deploy-${s.host.name}" (mkDeployApp sys s.host.name s))
+          (lib.filter (s: (s.host.system or "x86_64-linux") == sys) deploySpecs))))
+        deploySystems);
     };
 }

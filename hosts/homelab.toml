@@ -20,3 +20,8 @@ enable = ["openssh", "tailscale", "docker", "jellyfin"]
 
 [users.jack]
 groups = ["wheel", "docker"]
+
+# Optional: a default install target for `nix run .#deploy-homelab`.
+# (You can always override it: nix run .#deploy-homelab -- root@1.2.3.4)
+# [deploy]
+# target = "root@192.168.1.50"

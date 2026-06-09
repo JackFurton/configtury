@@ -126,13 +126,34 @@ running NixOS host *or* an image, from one spec.
 > so they build anywhere. `qcow`/`raw` install via a throwaway VM and therefore
 > need a **KVM-capable builder** (`requiredSystemFeatures = ["kvm"]`).
 
+### Install onto a remote machine
+
+Any host with a `[disk]` gets a `deploy-<name>` app. It uses
+[nixos-anywhere](https://github.com/nix-community/nixos-anywhere) to kexec into
+the target, wipe + partition the disk (via the disko layout), and install:
+
+```console
+$ nix run .#deploy-homelab -- root@1.2.3.4     # ERASES the target's disk
+```
+
+Add a default target so you can drop the argument:
+
+```toml
+[deploy]
+target = "root@192.168.1.50"
+```
+
+The partitioning is real and generated from your `[disk]` spec — it's
+`nixosConfigurations.<name>.config.system.build.diskoScript` (`sgdisk` + `mkfs`
+on your device), the exact automation nixos-anywhere runs on the target.
+
 ## Roadmap — climbing toward the metal
 
 - [x] v0: packages + profiles + shell → home-manager flake
 - [x] **NixOS system target**: services + users + boot → `configuration.nix`
 - [x] **disko disk layout**: `[disk]` → GPT partitioning + auto-generated `fileSystems`
 - [x] **flashable images**: `[image]` → qcow / iso / sd-aarch64 / raw via nixos-generators
-- [ ] nixos-anywhere (install a declared OS onto remote bare metal over SSH)
+- [x] **remote install**: `[disk]` → `deploy-<name>` app (nixos-anywhere over SSH)
 - [ ] Service options (ports, config), not just `enable`
 - [ ] Migrate image builds to the upstreamed `system.build.images` (nixpkgs ≥ 25.05)
 - [ ] Hosted registry browser (static site generated *from* the registry)
