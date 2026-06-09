@@ -1,0 +1,4 @@
+[package]
+name = "tree"
+nixpkg = "tree"
+description = "recursive directory listing"

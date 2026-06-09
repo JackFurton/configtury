@@ -50,15 +50,35 @@ let
 
   pkgAttr = registry: name: registry.packages.${name}.nixpkg;
 
-  # Each service becomes a one-line module setting its NixOS option path to true.
-  # lib.setAttrByPath turns "services.openssh.enable" into { services.openssh.enable = true; }
-  # and the module system merges them all — no hand-written recursiveUpdate.
+  # Services support two forms, which compose:
+  #   [services] enable = ["openssh", "docker"]       # simple on/off
+  #   [services.openssh] ports = [2222]               # enable + set options
+  #     settings = { PermitRootLogin = "no" }
+  # A registry service declares a `prefix` (e.g. "services.openssh"); every key
+  # under [services.<name>] maps to "<prefix>.<key>", so any NixOS option on
+  # that service is reachable from TOML. setAttrByPath builds the nested attrs
+  # and the module system merges everything.
   serviceModules = registry: spec:
-    map
-      (sn:
-        let s = registry.services.${sn} or (throw "configtury: unknown service '${sn}'");
-        in lib.setAttrByPath (lib.splitString "." s.enable) true)
-      (spec.services.enable or [ ]);
+    let
+      svc = spec.services or { };
+      simple = svc.enable or [ ];
+      tables = removeAttrs svc [ "enable" ]; # [services.<name>] option tables
+      names = lib.unique (simple ++ lib.attrNames tables);
+      prefixOf = name:
+        let s = registry.services.${name} or (throw "configtury: unknown service '${name}'");
+        in lib.splitString "." s.prefix;
+    in
+    lib.concatMap
+      (name:
+        let
+          prefix = prefixOf name;
+          opts = tables.${name} or { };
+          enableVal = if opts ? enable then opts.enable else true;
+          optKeys = removeAttrs opts [ "enable" ];
+        in
+        [ (lib.setAttrByPath (prefix ++ [ "enable" ]) enableVal) ]
+        ++ lib.mapAttrsToList (k: v: lib.setAttrByPath (prefix ++ [ k ]) v) optKeys)
+      names;
 
   usersModule = spec: {
     users.users = lib.mapAttrs

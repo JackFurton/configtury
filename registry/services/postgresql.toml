@@ -1,0 +1,4 @@
+[service]
+name = "postgresql"
+prefix = "services.postgresql"
+description = "PostgreSQL database server"

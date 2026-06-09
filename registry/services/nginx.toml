@@ -1,0 +1,4 @@
+[service]
+name = "nginx"
+prefix = "services.nginx"
+description = "nginx web server / reverse proxy"

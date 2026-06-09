@@ -1,0 +1,4 @@
+[package]
+name = "tmux"
+nixpkg = "tmux"
+description = "terminal multiplexer"

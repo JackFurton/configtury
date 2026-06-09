@@ -1,4 +1,4 @@
 [service]
 name = "docker"
-enable = "virtualisation.docker.enable"
+prefix = "virtualisation.docker"
 description = "Docker container runtime"

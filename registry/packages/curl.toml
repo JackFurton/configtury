@@ -1,0 +1,4 @@
+[package]
+name = "curl"
+nixpkg = "curl"
+description = "transfer data over the network"

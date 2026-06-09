@@ -1,0 +1,4 @@
+[profile]
+name = "ops"
+description = "extras for operating a server"
+packages = ["htop", "curl", "tmux", "tree", "neovim"]

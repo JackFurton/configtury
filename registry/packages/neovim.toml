@@ -1,0 +1,4 @@
+[package]
+name = "neovim"
+nixpkg = "neovim"
+description = "hyperextensible Vim-based text editor"

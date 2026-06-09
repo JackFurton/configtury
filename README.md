@@ -88,14 +88,23 @@ device = "/dev/vda"          # disko partitions + formats it; fileSystems auto-g
 filesystem = "ext4"
 
 [packages]
-profiles = ["dev-base"]      # system-wide packages
+profiles = ["dev-base", "ops"]   # system-wide packages
 
 [services]
-enable = ["openssh", "tailscale", "docker", "jellyfin"]
+enable = ["tailscale", "docker", "jellyfin"]   # simple on/off
+
+[services.openssh]               # ...or configure: keys map to services.openssh.*
+ports = [22, 2222]
+[services.openssh.settings]
+PermitRootLogin = "no"
 
 [users.jack]
 groups = ["wheel", "docker"]
 ```
+
+Services take two forms that compose: list them in `[services] enable = [...]`
+for on/off, or give a `[services.<name>]` table whose keys map straight onto
+that service's NixOS options (`[services.<name>] foo = ...` → `services.<name>.foo`).
 
 ```console
 $ sudo nixos-rebuild switch --flake .#homelab
@@ -154,7 +163,7 @@ on your device), the exact automation nixos-anywhere runs on the target.
 - [x] **disko disk layout**: `[disk]` → GPT partitioning + auto-generated `fileSystems`
 - [x] **flashable images**: `[image]` → qcow / iso / sd-aarch64 / raw via nixos-generators
 - [x] **remote install**: `[disk]` → `deploy-<name>` app (nixos-anywhere over SSH)
-- [ ] Service options (ports, config), not just `enable`
+- [x] **service options**: `[services.<name>]` keys map onto `services.<name>.*`
 - [ ] Migrate image builds to the upstreamed `system.build.images` (nixpkgs ≥ 25.05)
 - [ ] Hosted registry browser (static site generated *from* the registry)
 

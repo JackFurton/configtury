@@ -1,0 +1,4 @@
+[package]
+name = "htop"
+nixpkg = "htop"
+description = "interactive process viewer"

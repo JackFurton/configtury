@@ -1,4 +1,4 @@
 [service]
 name = "openssh"
-enable = "services.openssh.enable"
+prefix = "services.openssh"   # any key in [services.openssh] maps under here
 description = "OpenSSH remote login daemon"

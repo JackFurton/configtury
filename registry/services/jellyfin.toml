@@ -1,4 +1,4 @@
 [service]
 name = "jellyfin"
-enable = "services.jellyfin.enable"
+prefix = "services.jellyfin"
 description = "Jellyfin media server"
